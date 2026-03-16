@@ -19,16 +19,19 @@ end)
 -- ══════════════════════════════
 local logs = {}
 local recording = false
+local paused   = false       -- NEW: jeda tanpa mereset log
+local pausedElapsed = 0      -- akumulasi waktu saat dijeda
+local pauseStart = 0
 local startTime = 0
 local lastPos = nil
 local MIN_MOVE = 1.5 -- minimum stud movement to log
 
 local function timestamp()
-    return string.format("%.2f", tick() - startTime)
+    return string.format("%.2f", tick() - startTime - pausedElapsed)
 end
 
 local function addLog(type_, data)
-    if not recording then return end
+    if not recording or paused then return end
     local entry = {
         t    = timestamp(),
         type = type_,
@@ -252,7 +255,7 @@ sg.Parent         = player.PlayerGui
 
 -- MAIN
 local F = Instance.new("Frame", sg)
-F.Size             = UDim2.new(0, 250, 0, 420)
+F.Size             = UDim2.new(0, 250, 0, 456)
 F.Position         = UDim2.new(0, 16, 0, 70)
 F.BackgroundColor3 = BK
 F.BorderSizePixel  = 0
@@ -358,11 +361,25 @@ RecBtn.BorderSizePixel  = 0
 RecBtn.ZIndex           = 11
 cr(RecBtn, 8) sk(RecBtn, BD, 1)
 
--- CLEAR + COPY ROW
+-- PAUSE BUTTON
+local PauseBtn = Instance.new("TextButton", F)
+PauseBtn.Size             = UDim2.new(1,-20,0,28)
+PauseBtn.Position         = UDim2.new(0,10,0,132)
+PauseBtn.BackgroundColor3 = Color3.fromRGB(30,55,90)
+PauseBtn.Text             = "⏸  JEDA"
+PauseBtn.TextColor3       = Color3.fromRGB(150,180,255)
+PauseBtn.Font             = Enum.Font.GothamBold
+PauseBtn.TextSize         = 12
+PauseBtn.BorderSizePixel  = 0
+PauseBtn.Visible          = false   -- tampil hanya saat recording
+PauseBtn.ZIndex           = 11
+cr(PauseBtn, 8) sk(PauseBtn, BD, 1)
+
+-- CLEAR + COPY ROW (geser ke bawah 34px)
 local function smallBtn(xPct, txt, w, col)
     local b = Instance.new("TextButton", F)
     b.Size              = UDim2.new(w, -6, 0, 26)
-    b.Position          = UDim2.new(xPct, 3, 0, 132)
+    b.Position          = UDim2.new(xPct, 3, 0, 168)  -- was 132
     b.BackgroundColor3  = col or CD
     b.Text              = txt
     b.TextColor3        = W1
@@ -377,7 +394,7 @@ local ClearBtn = smallBtn(0,    "🗑  CLEAR",  0.33, Color3.fromRGB(60,20,20))
 local CopyBtn  = smallBtn(0.34, "📋  COPY LOG", 0.66, Color3.fromRGB(20,50,20))
 
 -- FILTER CHECKBOXES
-local filterY = 166
+local filterY = 202  -- shifted down 36px for PauseBtn
 local function mkCheck(y, label, default)
     local row = Instance.new("Frame", F)
     row.Size             = UDim2.new(1,-20,0,20)
@@ -527,6 +544,7 @@ local moveCount = 0
 
 local origAdd = addLog
 addLog = function(type_, data)
+    if not recording or paused then return end
     origAdd(type_, data)
     local entry = logs[#logs]
     if not entry then return end
@@ -545,12 +563,18 @@ end
 RecBtn.MouseButton1Click:Connect(function()
     recording = not recording
     if recording then
-        startTime  = tick()
-        moveCount  = 0
-        lastPos    = nil
+        startTime      = tick()
+        pausedElapsed  = 0
+        paused         = false
+        moveCount      = 0
+        lastPos        = nil
         RecBtn.Text             = "⏹  BERHENTI"
         RecBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
         Dot.BackgroundColor3    = GR
+        PauseBtn.Visible        = true
+        PauseBtn.Text           = "⏸  JEDA"
+        PauseBtn.BackgroundColor3 = Color3.fromRGB(30,55,90)
+        PauseBtn.TextColor3     = Color3.fromRGB(150,180,255)
 
         startWatching()
         watchClicks()
@@ -558,17 +582,38 @@ RecBtn.MouseButton1Click:Connect(function()
 
         -- timer tick
         timerConn = RunService.Heartbeat:Connect(function()
-            if recording then
-                statTime.Text = string.format("%.1fs", tick()-startTime)
+            if recording and not paused then
+                statTime.Text = string.format("%.1fs", tick()-startTime-pausedElapsed)
             end
         end)
     else
         recording = false
+        paused    = false
         RecBtn.Text             = "⏺  MULAI REKAM"
         RecBtn.BackgroundColor3 = Color3.fromRGB(180,40,40)
         Dot.BackgroundColor3    = RD
+        PauseBtn.Visible        = false
         stopWatching()
         if timerConn then timerConn:Disconnect() end
+    end
+end)
+
+-- PAUSE / RESUME
+PauseBtn.MouseButton1Click:Connect(function()
+    if not recording then return end
+    paused = not paused
+    if paused then
+        pauseStart = tick()
+        PauseBtn.Text             = "▶  LANJUTKAN"
+        PauseBtn.BackgroundColor3 = Color3.fromRGB(60,40,10)
+        PauseBtn.TextColor3       = Color3.fromRGB(255,190,60)
+        Dot.BackgroundColor3      = YL
+    else
+        pausedElapsed = pausedElapsed + (tick() - pauseStart)
+        PauseBtn.Text             = "⏸  JEDA"
+        PauseBtn.BackgroundColor3 = Color3.fromRGB(30,55,90)
+        PauseBtn.TextColor3       = Color3.fromRGB(150,180,255)
+        Dot.BackgroundColor3      = GR
     end
 end)
 
